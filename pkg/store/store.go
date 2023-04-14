@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 
 	"github.com/fnurk/geom/pkg/model"
 	bolt "go.etcd.io/bbolt"
@@ -19,7 +20,6 @@ func Init() error {
 
 	store = db
 
-	//register types, create buckets
 	db.Update(func(tx *bolt.Tx) error {
 		for k := range model.Types {
 			_, err := tx.CreateBucketIfNotExists([]byte(k))
@@ -75,14 +75,17 @@ func Put(t string, id string, d interface{}) (*string, error) {
 
 	store.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(t))
-		bid := []byte(id)
 
-		if id == "" { //id empty? autoincrement
+		var bid []byte
+
+		if len(id) == 0 { //id empty? autoincrement
 			i, _ := b.NextSequence()
+			retId = fmt.Sprint(i)
 			bid = itob(i)
+		} else {
+			retId = id
+			bid = []byte(id)
 		}
-
-		retId = id
 
 		err := b.Put(bid, bytes)
 		if err != nil {

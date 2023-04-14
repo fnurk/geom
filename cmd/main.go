@@ -22,10 +22,10 @@ func main() {
 
 	e.Use(middleware.Recover())
 
-	e.GET("/:type/:id", handlers.Get())
-	e.POST("/:type", handlers.Post())
-	e.PUT("/:type/:id", handlers.Put())
-	e.DELETE("/:type/:id", handlers.Delete())
+	e.GET("/:type/:id", handlers.Get)
+	e.POST("/:type", handlers.Post)
+	e.PUT("/:type/:id", handlers.Put)
+	e.DELETE("/:type/:id", handlers.Delete)
 
 	e.Logger.Fatal(e.Start(":8080"))
 }
