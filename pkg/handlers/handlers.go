@@ -4,20 +4,19 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strconv"
 
+	"github.com/fnurk/geom/pkg/model"
 	"github.com/fnurk/geom/pkg/store"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
-func GetDoc(docs store.DocStore) echo.HandlerFunc {
+func Get() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		id, err := strconv.Atoi(c.Param("id"))
-		if err != nil {
-			return err
-		}
+		id := c.Param("id")
+		t := c.Param("type")
 
-		doc, err := docs.Get(id)
+		doc, err := store.Get(t, id)
 
 		if err != nil {
 			return err
@@ -27,42 +26,47 @@ func GetDoc(docs store.DocStore) echo.HandlerFunc {
 			return c.NoContent(http.StatusNotFound)
 		}
 
-		return c.String(http.StatusOK, fmt.Sprintf("DOC: %v", doc.Content))
+		return c.JSON(http.StatusOK, doc)
 	}
 }
 
-func PostDoc(docs store.DocStore) echo.HandlerFunc {
+func Post() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		body, err := ioutil.ReadAll(c.Request().Body)
-		if err != nil {
-			return err
+		t := c.Param("type")
+
+		dataType := model.Types[t]
+		obj := dataType.Template
+		if err := c.Bind(&obj); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
-		doc := store.Document{
-			Content:     body,
-			ContentType: c.Request().Header["Content-Type"][0],
+		var id *string
+		switch dataType.IdType {
+		case model.UUID:
+			uuid := uuid.New().String()
+			id = &uuid
+		case model.AutoIncr:
+			empty := ""
+			id = &empty //Make nicer, empty string -> id from db
+
 		}
 
-		id, err := docs.Create(doc)
+		id, err := store.Put(t, *id, obj)
 
 		if err != nil {
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
-		fmt.Printf("ID: %d", id)
-
-		return c.String(http.StatusOK, fmt.Sprintf("%d", id))
+		return c.String(http.StatusOK, fmt.Sprintf("%s", *id))
 	}
 }
 
-func PutDoc(docs store.DocStore) echo.HandlerFunc {
+func Put() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		id, err := strconv.Atoi(c.Param("id"))
-		if err != nil {
-			return err
-		}
+		id := c.Param("id")
+		t := c.Param("type")
 
-		doc, err := docs.Get(id)
+		doc, err := store.Get(t, id)
 		if err != nil {
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
@@ -75,10 +79,7 @@ func PutDoc(docs store.DocStore) echo.HandlerFunc {
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
-		doc.Content = body
-		doc.ContentType = c.Request().Header["Content-Type"][0]
-
-		err = docs.Put(id, *doc)
+		_, err = store.Put(t, id, body)
 
 		if err != nil {
 			return c.String(http.StatusInternalServerError, err.Error())
@@ -89,14 +90,12 @@ func PutDoc(docs store.DocStore) echo.HandlerFunc {
 	}
 }
 
-func DeleteDoc(docs store.DocStore) echo.HandlerFunc {
+func Delete() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		id, err := strconv.Atoi(c.Param("id"))
-		if err != nil {
-			return err
-		}
+		id := c.Param("id")
+		t := c.Param("type")
 
-		doc, err := docs.Get(id)
+		doc, err := store.Get(t, id)
 		if err != nil {
 			return err
 		}
@@ -104,7 +103,7 @@ func DeleteDoc(docs store.DocStore) echo.HandlerFunc {
 			return c.NoContent(http.StatusNotFound)
 		}
 
-		err = docs.Delete(id)
+		err = store.Delete(t, id)
 
 		if err != nil {
 			return c.String(http.StatusInternalServerError, err.Error())

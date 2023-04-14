@@ -14,7 +14,7 @@ func main() {
 		Format: "${method} ${uri} -> ${status}\n",
 	}))
 
-	docStore, err := store.Init()
+	err := store.Init()
 	if err != nil {
 		e.Logger.Fatal(err)
 	}
@@ -22,10 +22,10 @@ func main() {
 
 	e.Use(middleware.Recover())
 
-	e.GET("/doc/:id", handlers.GetDoc(docStore))
-	e.POST("/doc", handlers.PostDoc(docStore))
-	e.PUT("/doc/:id", handlers.PutDoc(docStore))
-	e.DELETE("/doc/:id", handlers.DeleteDoc(docStore))
+	e.GET("/:type/:id", handlers.Get())
+	e.POST("/:type", handlers.Post())
+	e.PUT("/:type/:id", handlers.Put())
+	e.DELETE("/:type/:id", handlers.Delete())
 
 	e.Logger.Fatal(e.Start(":8080"))
 }
