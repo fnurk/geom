@@ -14,6 +14,8 @@ func main() {
 		Format: "${method} ${uri} -> ${status}\n",
 	}))
 
+	store.AddIndex("thing", "id", "thing.id")
+
 	err := store.Init()
 	if err != nil {
 		e.Logger.Fatal(err)

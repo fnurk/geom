@@ -9,7 +9,15 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
+type DbInitHook func(*bolt.DB) error
+
 var store *bolt.DB
+
+var initHooks = make([]DbInitHook, 0)
+
+func AddInitHook(hook DbInitHook) {
+	initHooks = append(initHooks, hook)
+}
 
 func Init() error {
 	db, err := bolt.Open("test.db", 0666, nil)
@@ -21,6 +29,14 @@ func Init() error {
 	store = db
 
 	db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte("index"))
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
+	db.Update(func(tx *bolt.Tx) error {
 		for k := range model.Types {
 			_, err := tx.CreateBucketIfNotExists([]byte(k))
 			if err != nil {
@@ -29,6 +45,13 @@ func Init() error {
 		}
 		return nil
 	})
+
+	for _, ih := range initHooks {
+		err = ih(store)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -73,6 +96,8 @@ func Put(t string, id string, d interface{}) (*string, error) {
 
 	retId := id
 
+	indexes := GetIndexes(t)
+
 	store.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(t))
 
@@ -91,6 +116,19 @@ func Put(t string, id string, d interface{}) (*string, error) {
 		if err != nil {
 			return err
 		}
+
+		for _, ix := range indexes {
+			ixb := tx.Bucket([]byte("index"))
+
+			val := d.(map[string]interface{})[ix.FieldName]
+			ixkey := ix.IndexName + "." + val.(string)
+			bixkey := []byte(ixkey)
+			err := ixb.Put(bixkey, bid)
+			if err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 	return &retId, nil
