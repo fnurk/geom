@@ -8,9 +8,9 @@ import (
 )
 
 func TestPubSub_TestSimpleDelivery(t *testing.T) {
-	ps := pubsub.New()
-	numSubs := 1000
-	numPublishers := 1000
+	ps := pubsub.New(100)
+	numSubs := 100
+	numPublishers := 100
 
 	subWg := sync.WaitGroup{}
 	subWg.Add(numSubs)
@@ -18,20 +18,22 @@ func TestPubSub_TestSimpleDelivery(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(numSubs + numPublishers)
 
+	counter := 0
+
 	for i := 0; i < numSubs; i++ {
-		go func(id int) {
-			s := ps.Subscribe("hello")
-			subWg.Done()
-
-			numMsgs := 0
-			for numMsgs < numPublishers {
-				<-s.MessageChan
+		numMsgs := 0
+		ps.Subscribe("hello",
+			func(s *pubsub.Subscriber, m pubsub.Message) {
 				numMsgs++
-			}
-			s.Unsubscribe()
+				counter++
+				if numMsgs >= numPublishers {
+					wg.Done()
+					s.Active = false
+				}
+			}, func() {
 
-			wg.Done()
-		}(i)
+			})
+		subWg.Done()
 	}
 
 	subWg.Wait()
@@ -44,52 +46,55 @@ func TestPubSub_TestSimpleDelivery(t *testing.T) {
 	}
 
 	wg.Wait()
+
+	if counter != (numSubs * numPublishers) {
+		t.Errorf("FAILEDD, got %d", counter)
+	}
 }
 
 func TestPubSub_Unsubscribe(t *testing.T) {
-	ps := pubsub.New()
+	ps := pubsub.New(1000)
 
-	s1 := ps.Subscribe("hello")
-	s2 := ps.Subscribe("hello")
+	ps.Subscribe("hello", func(s *pubsub.Subscriber, m pubsub.Message) {
+		t.Logf("S1: Got message %s", m.Body)
+	}, func() {
+		t.Logf("s2 forcefully shutdown")
+	})
 
-	ps.Publish("hello", pubsub.Message{Body: "world"})
+	ps.Subscribe("hello", func(s *pubsub.Subscriber, m pubsub.Message) {
+		t.Logf("S2: Got message %s", m.Body)
+	}, func() {
+		t.Logf("s2 forcefully shutdown")
+	})
 
-	<-s1.MessageChan
-	<-s2.MessageChan
-
-	s2.Unsubscribe()
-
-	ps.Publish("hello", pubsub.Message{Body: "world"})
-
-	<-s1.MessageChan
+	go func() {
+		ps.Publish("hello", pubsub.Message{Body: "msg1"})
+		ps.Publish("hello", pubsub.Message{Body: "msg2"})
+		ps.Publish("hello", pubsub.Message{Body: "msg3"})
+		ps.Publish("hello", pubsub.Message{Body: "msg4"})
+		ps.Publish("hello", pubsub.Message{Body: "msg5"})
+		ps.Publish("hello", pubsub.Message{Body: "msg7"})
+		ps.Publish("hello", pubsub.Message{Body: "msg8"})
+		ps.Publish("hello", pubsub.Message{Body: "msg9"})
+	}()
 }
 
 func TestPubSub_NoSubs(t *testing.T) {
-	ps := pubsub.New()
+	ps := pubsub.New(1000)
 	numPublishers := 1000
 
-	wg := sync.WaitGroup{}
-	wg.Add(numPublishers)
-
 	for i := 0; i < numPublishers; i++ {
-		go func(id int) {
-			ps.Publish("hello", pubsub.Message{Body: "world"})
-			wg.Done()
-		}(i)
+		ps.Publish("hello", pubsub.Message{Body: "world"})
 	}
-
-	wg.Wait()
 }
 
 func Benchmark_PubSub_NoSubs(b *testing.B) {
-	ps := pubsub.New()
+	ps := pubsub.New(1000)
 	numPublishers := 1000
 
 	for i := 0; i < b.N; i++ {
 		for i := 0; i < numPublishers; i++ {
-			go func(id int) {
-				ps.Publish("hello", pubsub.Message{Body: "world"})
-			}(i)
+			ps.Publish("hello", pubsub.Message{Body: "world"})
 		}
 
 	}
@@ -98,7 +103,7 @@ func Benchmark_PubSub_NoSubs(b *testing.B) {
 //Run 1000 publishers, one message each, to 1000 subscribers
 func Benchmark_PubSub(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		ps := pubsub.New()
+		ps := pubsub.New(10000)
 		numSubs := 1000
 		numPublishers := 1000
 
@@ -109,20 +114,16 @@ func Benchmark_PubSub(b *testing.B) {
 		wg.Add(numSubs + numPublishers)
 
 		for i := 0; i < numSubs; i++ {
-			go func(id int) {
-				s := ps.Subscribe("hello")
-				subWg.Done()
-
-				numMsgs := 0
-				for numMsgs < numPublishers {
-					<-s.MessageChan
+			numMsgs := 0
+			ps.Subscribe("hello",
+				func(s *pubsub.Subscriber, m pubsub.Message) {
 					numMsgs++
-				}
-
-				s.Unsubscribe()
-
-				wg.Done()
-			}(i)
+					if numMsgs >= numPublishers {
+						s.Active = false
+						wg.Done()
+					}
+				}, func() { wg.Done() })
+			subWg.Done()
 		}
 
 		subWg.Wait()
@@ -134,6 +135,7 @@ func Benchmark_PubSub(b *testing.B) {
 			}(i)
 		}
 
+		ps.Shutdown()
 		wg.Wait()
 	}
 }
