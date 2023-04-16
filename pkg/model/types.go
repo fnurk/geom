@@ -23,7 +23,7 @@ type Note struct {
 }
 
 type Thing struct {
-	Id           string    `json:"id"` //to be indexed
+	Id           int       `json:"id"` //to be indexed
 	Created      time.Time `json:"created"`
 	LastModified time.Time `json:"lastModified"`
 }
