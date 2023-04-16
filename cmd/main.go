@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/fnurk/geom/pkg/handlers"
+	"github.com/fnurk/geom/pkg/pubsub"
 	"github.com/fnurk/geom/pkg/store"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -21,6 +22,11 @@ func main() {
 		e.Logger.Fatal(err)
 	}
 	defer store.Close()
+
+	store.Changes.Subscribe("*", func(m *pubsub.Message) {
+		e.Logger.Printf("Got change on %s, body: %s", m.Topic, m.Body)
+
+	}, func() {})
 
 	e.Use(middleware.Recover())
 

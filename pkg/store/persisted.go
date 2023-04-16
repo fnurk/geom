@@ -6,12 +6,14 @@ import (
 	"fmt"
 
 	"github.com/fnurk/geom/pkg/model"
+	"github.com/fnurk/geom/pkg/pubsub"
 	bolt "go.etcd.io/bbolt"
 )
 
 type DbInitHook func(*bolt.DB) error
 
 var store *bolt.DB
+var Changes *pubsub.Pubsub
 
 var initHooks = make([]DbInitHook, 0)
 
@@ -25,6 +27,8 @@ func Init() error {
 	if err != nil {
 		return err
 	}
+
+	Changes = pubsub.New(1000)
 
 	store = db
 
@@ -96,7 +100,7 @@ func Put(t string, id string, d interface{}) (*string, error) {
 
 	retId := id
 
-	indexes := GetIndexes(t)
+	// indexes := GetIndexes(t)
 
 	store.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(t))
@@ -117,19 +121,23 @@ func Put(t string, id string, d interface{}) (*string, error) {
 			return err
 		}
 
-		for _, ix := range indexes {
-			ixb := tx.Bucket([]byte("index"))
-
-			val := d.(map[string]interface{})[ix.FieldName]
-			ixkey := ix.IndexName + "." + val.(string)
-			bixkey := []byte(ixkey)
-			err := ixb.Put(bixkey, bid)
-			if err != nil {
-				return err
-			}
-		}
+		// for _, ix := range indexes {
+		// 	ixb := tx.Bucket([]byte("index"))
+		//
+		// 	val := d.(map[string]interface{})[ix.FieldName]
+		// 	ixkey := ix.IndexName + "." + val.(string)
+		// 	bixkey := []byte(ixkey)
+		// 	err := ixb.Put(bixkey, bid)
+		// 	if err != nil {
+		// 		return err
+		// 	}
+		// }
 
 		return nil
+	})
+	Changes.Publish(pubsub.Message{
+		Topic: t + "." + id,
+		Body:  string(bytes),
 	})
 	return &retId, nil
 }

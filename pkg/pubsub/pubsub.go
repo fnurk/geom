@@ -5,7 +5,8 @@ import (
 )
 
 type Message struct {
-	Body string
+	Topic string
+	Body  string
 }
 
 type Subscriber struct {
@@ -42,7 +43,7 @@ func step(c uint64, l uint64) uint64 {
 	return (c + 1) % l
 }
 
-func (p *Pubsub) Subscribe(topic string, handler func(*Subscriber, Message), shutdownHandler func()) *Subscriber {
+func (p *Pubsub) Subscribe(topic string, handler func(*Message), shutdownHandler func()) *Subscriber {
 	s := Subscriber{
 		Topic:  topic,
 		Active: true,
@@ -68,14 +69,16 @@ func (p *Pubsub) Subscribe(topic string, handler func(*Subscriber, Message), shu
 				return
 			}
 			s.Cursor = step(s.Cursor, p.Length)
-			handler(s, p.Buffer[s.Cursor])
+			if s.Topic == "*" || p.Buffer[s.Cursor].Topic == s.Topic {
+				handler(&p.Buffer[s.Cursor])
+			}
 		}
 	}(&s)
 
 	return &s
 }
 
-func (p *Pubsub) Publish(topic string, msg Message) {
+func (p *Pubsub) Publish(msg Message) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.Cursor = step(p.Cursor, p.Length)
@@ -92,4 +95,5 @@ func (p *Pubsub) Shutdown() {
 
 func (s *Subscriber) Unsubscribe() {
 	s.Active = false
+	s.Pubsub.Cond.Broadcast()
 }
