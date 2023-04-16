@@ -8,7 +8,7 @@ import (
 var Types = map[string]DataType{
 	"note": {
 		Template: Note{},
-		IdType:   UUID,
+		IdType:   AutoIncr,
 	},
 	"thing": {
 		Template: Thing{},

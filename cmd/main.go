@@ -25,7 +25,6 @@ func main() {
 
 	store.Changes.Subscribe("*", func(m *pubsub.Message) {
 		e.Logger.Printf("Got change on %s, body: %s", m.Topic, m.Body)
-
 	}, func() {})
 
 	e.Use(middleware.Recover())

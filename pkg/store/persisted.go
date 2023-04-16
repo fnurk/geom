@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/fnurk/geom/pkg/model"
 	"github.com/fnurk/geom/pkg/pubsub"
@@ -50,6 +52,20 @@ func Init() error {
 		return nil
 	})
 
+	go func(*bolt.DB) {
+		for {
+			c := time.Tick(2 * time.Second)
+			for range c {
+				db.View(func(tx *bolt.Tx) error {
+					tx.CopyFile("copy.db", 0666)
+					return nil
+				})
+				println("updated db")
+
+			}
+		}
+	}(store)
+
 	for _, ih := range initHooks {
 		err = ih(store)
 		if err != nil {
@@ -69,7 +85,7 @@ func Get(t string, id string) (interface{}, error) {
 
 	store.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(t))
-		v := b.Get([]byte(id))
+		v := b.Get(strtob(id))
 
 		if v != nil {
 			vCopy = make([]byte, len(v))
@@ -100,7 +116,7 @@ func Put(t string, id string, d interface{}) (*string, error) {
 
 	retId := id
 
-	// indexes := GetIndexes(t)
+	indexes := GetIndexes(t)
 
 	store.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(t))
@@ -121,17 +137,29 @@ func Put(t string, id string, d interface{}) (*string, error) {
 			return err
 		}
 
-		// for _, ix := range indexes {
-		// 	ixb := tx.Bucket([]byte("index"))
-		//
-		// 	val := d.(map[string]interface{})[ix.FieldName]
-		// 	ixkey := ix.IndexName + "." + val.(string)
-		// 	bixkey := []byte(ixkey)
-		// 	err := ixb.Put(bixkey, bid)
-		// 	if err != nil {
-		// 		return err
-		// 	}
-		// }
+		for _, ix := range indexes {
+			ixb := tx.Bucket([]byte("index"))
+
+			val := d.(map[string]interface{})[ix.FieldName]
+
+			var ixkey string
+			switch val.(type) {
+			case string:
+				ixkey = ix.IndexName + "." + val.(string)
+			case float64:
+				ixkey = ix.IndexName + "." + fmt.Sprintf("%f", val.(float64))
+			case int:
+				ixkey = ix.IndexName + "." + fmt.Sprintf("%d", val.(int))
+			case uint64:
+				ixkey = ix.IndexName + "." + fmt.Sprintf("%d", val.(uint64))
+			}
+
+			bixkey := []byte(ixkey)
+			err := ixb.Put(bixkey, bid)
+			if err != nil {
+				return err
+			}
+		}
 
 		return nil
 	})
@@ -152,6 +180,11 @@ func Delete(t string, id string) error {
 		return nil
 	})
 	return nil
+}
+
+func strtob(v string) []byte {
+	i, _ := strconv.Atoi(v)
+	return itob(uint64(i))
 }
 
 func itob(v uint64) []byte {

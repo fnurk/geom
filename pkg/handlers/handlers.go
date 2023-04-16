@@ -78,7 +78,6 @@ func Put(c echo.Context) error {
 	if err != nil {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
-
 	return c.NoContent(http.StatusOK)
 }
 

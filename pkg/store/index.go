@@ -21,9 +21,15 @@ func AddIndex(typeName string, field string, indexName string) {
 }
 
 func GetIndexes(typeName string) []*model.Index {
-	indexes := MemGet("indexes", typeName).([]*model.Index)
-	if indexes == nil {
-		indexes = make([]*model.Index, 0)
+	indexptr := MemGet("indexes", typeName)
+	var indexes []*model.Index
+	if indexptr != nil {
+		indexes = indexptr.([]*model.Index)
+	}
+	if indexptr == nil {
+		newMap := make([]*model.Index, 0)
+		MemSet("indexes", typeName, newMap)
+		indexes = newMap
 	}
 	return indexes
 }
