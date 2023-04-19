@@ -26,3 +26,5 @@ The goal is to have:
  - Super simple deployment
    - Exetutable + database file + config file -> rock and roll
 
+### Structure
+Most of the action should be in cmd/main.go and pkg/model/types.go.
