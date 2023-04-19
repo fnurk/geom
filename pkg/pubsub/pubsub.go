@@ -69,9 +69,9 @@ func (p *Pubsub) Subscribe(topic string, handler func(*Message), shutdownHandler
 				return
 			}
 			s.Cursor = step(s.Cursor, p.Length)
-			if s.Topic == "*" || p.Buffer[s.Cursor].Topic == s.Topic {
-				handler(&p.Buffer[s.Cursor])
-			}
+			handler(&p.Buffer[s.Cursor])
+			// if match.Match("*", p.Buffer[s.Cursor].Topic) {
+			// }
 		}
 	}(&s)
 

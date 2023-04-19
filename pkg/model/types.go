@@ -8,24 +8,31 @@ import (
 var Types = map[string]DataType{
 	"note": {
 		Template: Note{},
-		IdType:   AutoIncr,
 	},
 	"thing": {
 		Template: Thing{},
-		IdType:   AutoIncr,
 	},
 }
 
-type Note struct {
-	Body         string    `json:"body"`
+type Document interface {
+	Note | Thing
+}
+
+type MetaFields struct {
+	CreatedBy    string    `json:"createdBy"`
 	Created      time.Time `json:"created"`
 	LastModified time.Time `json:"lastModified"`
+	SharedWith   []string  `json:"sharedWith"`
+}
+
+type Note struct {
+	MetaFields
+	Body string `json:"body" validate:"required`
 }
 
 type Thing struct {
-	Id           int       `json:"id"` //to be indexed
-	Created      time.Time `json:"created"`
-	LastModified time.Time `json:"lastModified"`
+	MetaFields
+	Id string `json:"id" validate:"required"` //to be indexed
 }
 
 // GENERIC CODE BELOW
@@ -48,12 +55,4 @@ func Decode(t string, data []byte) (interface{}, error) {
 
 type DataType struct {
 	Template interface{}
-	IdType   IdType
 }
-
-type IdType int64
-
-const (
-	UUID     IdType = 0 //Sholud probably not be used in b-tree db
-	AutoIncr        = 1
-)

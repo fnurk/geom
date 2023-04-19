@@ -2,7 +2,6 @@ package store
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -52,6 +51,7 @@ func Init() error {
 		return nil
 	})
 
+	//DUMP DATABASE TO OTHER FILE FOR VIEWING
 	go func(*bolt.DB) {
 		for {
 			c := time.Tick(2 * time.Second)
@@ -60,8 +60,6 @@ func Init() error {
 					tx.CopyFile("copy.db", 0666)
 					return nil
 				})
-				println("updated db")
-
 			}
 		}
 	}(store)
@@ -80,7 +78,7 @@ func Close() {
 	store.Close()
 }
 
-func Get(t string, id string) (interface{}, error) {
+func Get(t string, id string) ([]byte, error) {
 	var vCopy []byte
 
 	store.View(func(tx *bolt.Tx) error {
@@ -99,75 +97,66 @@ func Get(t string, id string) (interface{}, error) {
 		return nil, nil
 	}
 
-	result, err := model.Decode(t, vCopy)
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
+	return vCopy, nil
 }
 
-func Put(t string, id string, d interface{}) (*string, error) {
-	bytes, err := json.Marshal(d)
-
-	if err != nil {
-		return nil, err
-	}
-
+func Put(t string, id uint64, d []byte) (uint64, error) {
 	retId := id
 
-	indexes := GetIndexes(t)
+	// indexes := GetIndexes(t)
 
 	store.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(t))
 
 		var bid []byte
 
-		if len(id) == 0 { //id empty? autoincrement
+		if id == 0 { //id empty? autoincrement
 			i, _ := b.NextSequence()
-			retId = fmt.Sprint(i)
+			retId = i
 			bid = itob(i)
 		} else {
 			retId = id
-			bid = []byte(id)
+			bid = itob(id)
 		}
 
-		err := b.Put(bid, bytes)
+		err := b.Put(bid, []byte(d))
 		if err != nil {
 			return err
 		}
 
-		for _, ix := range indexes {
-			ixb := tx.Bucket([]byte("index"))
-
-			val := d.(map[string]interface{})[ix.FieldName]
-
-			var ixkey string
-			switch val.(type) {
-			case string:
-				ixkey = ix.IndexName + "." + val.(string)
-			case float64:
-				ixkey = ix.IndexName + "." + fmt.Sprintf("%f", val.(float64))
-			case int:
-				ixkey = ix.IndexName + "." + fmt.Sprintf("%d", val.(int))
-			case uint64:
-				ixkey = ix.IndexName + "." + fmt.Sprintf("%d", val.(uint64))
-			}
-
-			bixkey := []byte(ixkey)
-			err := ixb.Put(bixkey, bid)
-			if err != nil {
-				return err
-			}
-		}
+		// for _, ix := range indexes {
+		// 	ixb := tx.Bucket([]byte("index"))
+		//
+		// 	val := d.(map[string][]byte)[ix.FieldName]
+		//
+		// 	var ixkey string
+		// 	switch val.(type) {
+		// 	case string:
+		// 		ixkey = ix.IndexName + "." + val.(string)
+		// 	case float64:
+		// 		ixkey = ix.IndexName + "." + fmt.Sprintf("%f", val.(float64))
+		// 	case int:
+		// 		ixkey = ix.IndexName + "." + fmt.Sprintf("%d", val.(int))
+		// 	case uint64:
+		// 		ixkey = ix.IndexName + "." + fmt.Sprintf("%d", val.(uint64))
+		// 	}
+		//
+		// 	bixkey := []byte(ixkey)
+		// 	err := ixb.Put(bixkey, bid)
+		// 	if err != nil {
+		// 		return err
+		// 	}
+		// }
 
 		return nil
 	})
+
 	Changes.Publish(pubsub.Message{
-		Topic: t + "." + id,
-		Body:  string(bytes),
+		Topic: fmt.Sprintf("%s.%d", t, retId),
+		Body:  string(d),
 	})
-	return &retId, nil
+
+	return retId, nil
 }
 
 func Delete(t string, id string) error {

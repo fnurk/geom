@@ -1,103 +1,155 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/fnurk/geom/pkg/model"
 	"github.com/fnurk/geom/pkg/store"
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
-func Get(c echo.Context) error {
-	id := c.Param("id")
-	t := c.Param("type")
+type DocAccessFunc func([]byte) bool
 
-	doc, err := store.Get(t, id)
-
-	if err != nil {
-		return err
+func checkAccess(doc []byte, checks ...DocAccessFunc) bool {
+	allowed := false
+	for _, check := range checks {
+		if check(doc) {
+			allowed = true
+			break
+		}
 	}
-
-	if doc == nil {
-		return c.NoContent(http.StatusNotFound)
-	}
-
-	return c.JSON(http.StatusOK, doc)
+	return allowed
 }
 
-func Post(c echo.Context) error {
-	t := c.Param("type")
+func Get(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
+	return func(c echo.Context) error {
+		id := c.Param("id")
 
-	dataType := model.Types[t]
-	obj := dataType.Template
-	if err := c.Bind(&obj); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		doc, err := store.Get(t, id)
+		if err != nil {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
+		if doc == nil {
+			return c.NoContent(http.StatusNotFound)
+		}
+
+		if !checkAccess(doc, accessCheckers...) {
+			return c.NoContent(http.StatusForbidden)
+		}
+
+		dataType := model.Types[t]
+		obj := dataType.Template
+
+		err = json.Unmarshal([]byte(doc), &obj)
+
+		if err != nil {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
+
+		if err != nil {
+			return err
+		}
+
+		if doc == nil {
+			return c.NoContent(http.StatusNotFound)
+		}
+
+		return c.JSON(http.StatusOK, obj)
 	}
-
-	var id *string
-	switch dataType.IdType {
-	case model.UUID:
-		uuid := uuid.New().String()
-		id = &uuid
-	case model.AutoIncr:
-		empty := ""
-		id = &empty //TODO: Make nicer, now empty string -> id from db
-	}
-
-	id, err := store.Put(t, *id, obj)
-
-	if err != nil {
-		return c.String(http.StatusInternalServerError, err.Error())
-	}
-
-	return c.String(http.StatusOK, fmt.Sprintf("%s", *id))
 }
 
-func Put(c echo.Context) error {
-	id := c.Param("id")
-	t := c.Param("type")
+func Post(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
+	return func(c echo.Context) error {
+		dataType := model.Types[t]
+		obj := dataType.Template
+		if err := c.Bind(&obj); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
 
-	doc, err := store.Get(t, id)
-	if err != nil {
-		return c.String(http.StatusInternalServerError, err.Error())
-	}
-	if doc == nil {
-		return c.NoContent(http.StatusNotFound)
-	}
+		doc, err := json.Marshal(obj)
 
-	dataType := model.Types[t]
-	obj := dataType.Template
-	if err := c.Bind(&obj); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
+		if !checkAccess(doc, accessCheckers...) {
+			return c.NoContent(http.StatusForbidden)
+		}
 
-	_, err = store.Put(t, id, obj)
+		if err != nil {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
 
-	if err != nil {
-		return c.String(http.StatusInternalServerError, err.Error())
+		id, err := store.Put(t, 0, doc)
+
+		if err != nil {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
+
+		return c.String(http.StatusOK, fmt.Sprintf("%d", id))
 	}
-	return c.NoContent(http.StatusOK)
 }
 
-func Delete(c echo.Context) error {
-	id := c.Param("id")
-	t := c.Param("type")
+func Put(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
+	return func(c echo.Context) error {
+		id := c.Param("id")
 
-	doc, err := store.Get(t, id)
-	if err != nil {
-		return err
+		doc, err := store.Get(t, id)
+		if err != nil {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
+		if doc == nil {
+			return c.NoContent(http.StatusNotFound)
+		}
+		if !checkAccess(doc, accessCheckers...) {
+			return c.NoContent(http.StatusForbidden)
+		}
+
+		dataType := model.Types[t]
+		obj := dataType.Template
+		if err := c.Bind(&obj); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
+
+		bytes, err := json.Marshal(obj)
+
+		if err != nil {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
+
+		idInt, err := strconv.Atoi(id)
+
+		_, err = store.Put(t, uint64(idInt), bytes)
+
+		if err != nil {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
+		return c.NoContent(http.StatusOK)
 	}
-	if doc == nil {
-		return c.NoContent(http.StatusNotFound)
+}
+
+func Delete(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
+	return func(c echo.Context) error {
+		id := c.Param("id")
+
+		doc, err := store.Get(t, id)
+
+		if err != nil {
+			return err
+		}
+		if doc == nil {
+			return c.NoContent(http.StatusNotFound)
+		}
+
+		if !checkAccess(doc, accessCheckers...) {
+			return c.NoContent(http.StatusForbidden)
+		}
+
+		err = store.Delete(t, id)
+
+		if err != nil {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
+
+		return c.NoContent(http.StatusOK)
 	}
-
-	err = store.Delete(t, id)
-
-	if err != nil {
-		return c.String(http.StatusInternalServerError, err.Error())
-	}
-
-	return c.NoContent(http.StatusOK)
 }
