@@ -2,6 +2,8 @@ package pubsub
 
 import (
 	"sync"
+
+	"github.com/tidwall/match"
 )
 
 type Message struct {
@@ -10,11 +12,11 @@ type Message struct {
 }
 
 type Subscriber struct {
-	Topic  string
-	Active bool
-	Pubsub *Pubsub
-	Cursor uint64
-	Mutex  *sync.RWMutex
+	TopicPattern string
+	Active       bool
+	Pubsub       *Pubsub
+	Cursor       uint64
+	Mutex        *sync.RWMutex
 }
 
 type Pubsub struct {
@@ -43,12 +45,12 @@ func step(c uint64, l uint64) uint64 {
 	return (c + 1) % l
 }
 
-func (p *Pubsub) Subscribe(topic string, handler func(*Message), shutdownHandler func()) *Subscriber {
+func (p *Pubsub) Subscribe(pattern string, handler func(*Message, *Subscriber), shutdownHandler func()) *Subscriber {
 	s := Subscriber{
-		Topic:  topic,
-		Active: true,
-		Pubsub: p,
-		Cursor: p.Cursor,
+		TopicPattern: pattern,
+		Active:       true,
+		Pubsub:       p,
+		Cursor:       p.Cursor,
 	}
 
 	go func(s *Subscriber) {
@@ -69,9 +71,9 @@ func (p *Pubsub) Subscribe(topic string, handler func(*Message), shutdownHandler
 				return
 			}
 			s.Cursor = step(s.Cursor, p.Length)
-			handler(&p.Buffer[s.Cursor])
-			// if match.Match("*", p.Buffer[s.Cursor].Topic) {
-			// }
+			if match.Match(p.Buffer[s.Cursor].Topic, s.TopicPattern) {
+				handler(&p.Buffer[s.Cursor], s)
+			}
 		}
 	}(&s)
 

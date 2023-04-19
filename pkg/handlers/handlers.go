@@ -7,8 +7,10 @@ import (
 	"strconv"
 
 	"github.com/fnurk/geom/pkg/model"
+	"github.com/fnurk/geom/pkg/pubsub"
 	"github.com/fnurk/geom/pkg/store"
 	"github.com/labstack/echo/v4"
+	"golang.org/x/net/websocket"
 )
 
 type DocAccessFunc func([]byte) bool
@@ -151,5 +153,49 @@ func Delete(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error 
 		}
 
 		return c.NoContent(http.StatusOK)
+	}
+}
+
+func LiveUpdates(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
+	return func(c echo.Context) error {
+		id := c.Param("id")
+
+		doc, err := store.Get(t, id)
+
+		if err != nil {
+			return err
+		}
+
+		if doc == nil {
+			return c.NoContent(http.StatusNotFound)
+		}
+
+		if !checkAccess(doc, accessCheckers...) {
+			return c.NoContent(http.StatusForbidden)
+		}
+
+		websocket.Handler(func(ws *websocket.Conn) {
+			defer ws.Close()
+			store.Changes.Subscribe(fmt.Sprintf("%s.%s", t, id), func(m *pubsub.Message, s *pubsub.Subscriber) {
+				err := websocket.Message.Send(ws, m.Body)
+				if err != nil {
+					s.Unsubscribe()
+					ws.Close()
+				}
+			}, func() {
+				ws.Close()
+			})
+
+			for {
+				msg := ""
+				err := websocket.Message.Receive(ws, &msg)
+				if err != nil {
+					ws.Close()
+					break
+				}
+			}
+
+		}).ServeHTTP(c.Response(), c.Request())
+		return nil
 	}
 }

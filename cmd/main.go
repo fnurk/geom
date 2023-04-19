@@ -5,7 +5,6 @@ import (
 
 	"github.com/fnurk/geom/pkg/handlers"
 	"github.com/fnurk/geom/pkg/model"
-	"github.com/fnurk/geom/pkg/pubsub"
 	"github.com/fnurk/geom/pkg/store"
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
@@ -28,23 +27,24 @@ func main() {
 		Format: "${method} ${uri} -> ${status}\n",
 	}))
 
-	store.AddIndex("thing", "id", "thing.id")
-
 	err := store.Init()
 	if err != nil {
 		e.Logger.Fatal(err)
 	}
 	defer store.Close()
 
-	store.Changes.Subscribe("*", func(m *pubsub.Message) {
-		e.Logger.Printf("Got change on %s, body: %s", m.Topic, m.Body)
-	}, func() {})
+	//For testing subscriptions
+	// store.Changes.Subscribe("*", func(m *pubsub.Message) {
+	// 	e.Logger.Printf("Got change on %s, body: %s", m.Topic, m.Body)
+	// }, func() {})
 
 	e.Use(middleware.Recover())
 
+	//Set up CRUD+live updates for all types registered in model package
 	for k := range model.Types {
 		AddCrudEndpointsForType(e, k)
 	}
+	e.Static("/", ".")
 
 	e.Logger.Fatal(e.Start(":8080"))
 }
@@ -72,8 +72,10 @@ func AddCrudEndpointsForType(e *echo.Echo, t string) {
 	e.POST("/"+t, handlers.Post(t, open))
 	e.PUT("/"+t+"/:id", handlers.Put(t, isOwner, isSharedWith))
 	e.DELETE("/"+t+"/:id", handlers.Delete(t, isOwner, isSharedWith))
+	e.GET("/"+t+"/:id/live", handlers.LiveUpdates(t, isOwner, isSharedWith))
 }
 
+//TODO: Start using this
 func (cv *CustomValidator) Validate(i interface{}) error {
 	if err := cv.validator.Struct(i); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
