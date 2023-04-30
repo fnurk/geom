@@ -27,4 +27,4 @@ The goal is to have:
    - Exetutable + database file + config file -> rock and roll
 
 ### Structure
-Most of the action should be in cmd/main.go and pkg/model/types.go.
+An example of a firebase-like implementation is under work in examples/documents.go
