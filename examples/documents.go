@@ -2,28 +2,16 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/fnurk/geom/pkg/handlers"
 	"github.com/fnurk/geom/pkg/model"
 	"github.com/fnurk/geom/pkg/pubsub"
 	"github.com/fnurk/geom/pkg/store"
-	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/tidwall/gjson"
 )
-
-type (
-	CustomValidator struct {
-		validator *validator.Validate
-	}
-)
-
-type Document interface {
-	Note | Thing
-}
 
 type MetaFields struct {
 	CreatedBy    string    `json:"createdBy"`
@@ -52,8 +40,6 @@ func main() {
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
 		Format: "${method} ${uri} -> ${status}\n",
 	}))
-
-	e.Validator = &CustomValidator{validator: validator.New()}
 
 	boltdb, err := store.NewBoltDb("test.db")
 
@@ -112,12 +98,4 @@ func AddCrudEndpointsForType(e *echo.Echo, t string) {
 	e.PUT("/"+t+"/:id", handlers.Put(db, t, isOwner, isSharedWith))
 	e.DELETE("/"+t+"/:id", handlers.Delete(db, t, isOwner, isSharedWith))
 	e.GET("/"+t+"/:id/live", handlers.LiveUpdates(db, t, changes, isOwner, isSharedWith))
-}
-
-// TODO: Start using this
-func (cv *CustomValidator) Validate(i interface{}) error {
-	if err := cv.validator.Struct(i); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	return nil
 }
