@@ -153,7 +153,7 @@ func Delete(store store.Database, t string, accessCheckers ...AccessFunc) func(e
 	}
 }
 
-func LiveUpdates(store store.Database, t string, changes *pubsub.Pubsub, accessCheckers ...AccessFunc) func(echo.Context) error {
+func LiveUpdates(store store.Database, t string, changes pubsub.Pubsub, accessCheckers ...AccessFunc) func(echo.Context) error {
 	return func(c echo.Context) error {
 		id := c.Param("id")
 
@@ -173,7 +173,7 @@ func LiveUpdates(store store.Database, t string, changes *pubsub.Pubsub, accessC
 
 		websocket.Handler(func(ws *websocket.Conn) {
 			defer ws.Close()
-			changes.Subscribe(fmt.Sprintf("%s.%s", t, id), func(m *pubsub.Message, s *pubsub.Subscriber) {
+			changes.Subscribe(fmt.Sprintf("%s.%s", t, id), func(m *pubsub.Message, s pubsub.Subscriber) {
 				err := websocket.Message.Send(ws, m.Body)
 				if err != nil {
 					s.Unsubscribe()

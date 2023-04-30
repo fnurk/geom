@@ -31,7 +31,7 @@ type Thing struct {
 	Id string `json:"id" index:"inmem,disk"` //to be indexed
 }
 
-var changes *pubsub.Pubsub
+var changes pubsub.Pubsub
 
 var db store.Database
 
@@ -46,13 +46,13 @@ func main() {
 
 	db = boltdb
 
-	changes = pubsub.New(1000)
+	changes = pubsub.NewRingBufferPubsub(1000)
 
 	model.RegisterType("note", Note{})
 	model.RegisterType("thing", Thing{})
 
 	db.AddPutHook(func(t string, id string, value []byte) {
-		changes.Publish(pubsub.Message{
+		changes.Publish(&pubsub.Message{
 			Topic: fmt.Sprintf("%s.%s", t, id),
 			Body:  string(value),
 		})

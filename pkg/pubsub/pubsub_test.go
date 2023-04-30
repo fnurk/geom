@@ -3,119 +3,104 @@ package pubsub_test
 import (
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/fnurk/geom/pkg/pubsub"
+	"go.uber.org/goleak"
 )
 
-func TestPubSub_TestSimpleDelivery(t *testing.T) {
-	ps := pubsub.New(1000)
-	numSubs := 100
-	numPublishers := 100
+func TestChanPubSub_MessageCount(t *testing.T) {
+	defer goleak.VerifyNone(t)
 
-	subWg := sync.WaitGroup{}
-	subWg.Add(numSubs)
+	ps := pubsub.NewChanPubsub()
 
 	wg := sync.WaitGroup{}
-	wg.Add(numSubs + numPublishers)
+	wg.Add(100)
 
-	counter := 0
-
-	for i := 0; i < numSubs; i++ {
-		numMsgs := 0
-		ps.Subscribe("hello",
-			func(m *pubsub.Message, s *pubsub.Subscriber) {
-				numMsgs++
-				counter++
-				if numMsgs >= numPublishers {
-					wg.Done()
-				}
-			}, func() {
-
-			})
-		subWg.Done()
+	for i := 0; i < 100; i++ {
+		counter := 0
+		ps.Subscribe("hello", func(m *pubsub.Message, s pubsub.Subscriber) {
+			counter++
+			if counter == 1000 {
+				wg.Done()
+			}
+		}, func() {
+		})
 	}
 
-	subWg.Wait()
-
-	for i := 0; i < numPublishers; i++ {
-		go func(id int) {
-			ps.Publish(pubsub.Message{
-				Topic: "hello",
-				Body:  "world"})
-			wg.Done()
-		}(i)
+	for i := 0; i < 1000; i++ {
+		ps.Publish(&pubsub.Message{Topic: "hello", Body: "msg1"})
 	}
 
 	wg.Wait()
 
-	if counter != (numSubs * numPublishers) {
-		t.Errorf("FAILEDD, got %d", counter)
-	}
+	ps.Shutdown()
 }
 
-func TestPubSub_Unsubscribe(t *testing.T) {
-	ps := pubsub.New(1000)
+func TestChanPubSub_Unsubscribe(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	ps := pubsub.NewChanPubsub()
 
 	counter := 0
-
-	ps.Subscribe("hello", func(m *pubsub.Message, s *pubsub.Subscriber) {
+	ps.Subscribe("hello", func(m *pubsub.Message, s pubsub.Subscriber) {
 		counter++
+		if counter == 5 {
+			s.Unsubscribe()
+		}
 	}, func() {
 	})
 
-	ps.Publish(pubsub.Message{Topic: "hello", Body: "msg1"})
-	ps.Publish(pubsub.Message{Topic: "hello", Body: "msg1"})
-	ps.Publish(pubsub.Message{Topic: "hello", Body: "msg1"})
-	ps.Publish(pubsub.Message{Topic: "hello", Body: "msg1"})
-	ps.Publish(pubsub.Message{Topic: "hello", Body: "msg1"})
-	ps.Publish(pubsub.Message{Topic: "hello", Body: "msg1"})
-	ps.Publish(pubsub.Message{Topic: "hello", Body: "msg1"})
-	ps.Publish(pubsub.Message{Topic: "hello", Body: "msg1"})
-	ps.Publish(pubsub.Message{Topic: "hello", Body: "msg1"})
+	for i := 0; i < 10; i++ {
+		ps.Publish(&pubsub.Message{Topic: "hello", Body: "msg1"})
+	}
 
-	time.Sleep(1 * time.Millisecond)
-
-	if counter != 9 {
-		t.Errorf("expected 9, got %d", counter)
+	if counter != 5 {
+		t.Errorf("expected 5, got %d", counter)
 	}
 }
 
-func TestPubSub_NoSubs(t *testing.T) {
-	ps := pubsub.New(1000)
-	numPublishers := 1000
+func Benchmark_ChanPubSub_ExactMatch(b *testing.B) {
+	ps := pubsub.NewChanPubsub()
 
-	for i := 0; i < numPublishers; i++ {
-		ps.Publish(pubsub.Message{Topic: "hello", Body: "world"})
-	}
-}
-
-func Benchmark_PubSub_NoSubs(b *testing.B) {
-	ps := pubsub.New(1000)
-	numPublishers := 1000
+	ps.Subscribe("hello",
+		func(m *pubsub.Message, s pubsub.Subscriber) {
+			//noop
+		}, func() {})
 
 	for i := 0; i < b.N; i++ {
-		for i := 0; i < numPublishers; i++ {
-			ps.Publish(pubsub.Message{Topic: "hello", Body: "world"})
-		}
-
+		ps.Publish(&pubsub.Message{Topic: "hello", Body: "world"})
 	}
+
+	ps.Shutdown()
 }
 
-// Run 1000 publishers, one message each, to 1000 subscribers
-func Benchmark_PubSub(b *testing.B) {
-	ps := pubsub.New(100)
+func Benchmark_ChanPubSub_Wildcard(b *testing.B) {
+	ps := pubsub.NewChanPubsub()
+
+	ps.Subscribe("*",
+		func(m *pubsub.Message, s pubsub.Subscriber) {
+			//noop
+		}, func() {})
+
+	for i := 0; i < b.N; i++ {
+		ps.Publish(&pubsub.Message{Topic: "hello", Body: "world"})
+	}
+
+	ps.Shutdown()
+}
+
+func Benchmark_ChanPubSub_1000_Fanout(b *testing.B) {
+	ps := pubsub.NewChanPubsub()
 
 	for i := 0; i < 1000; i++ {
 		ps.Subscribe("hello",
-			func(m *pubsub.Message, s *pubsub.Subscriber) {
+			func(m *pubsub.Message, s pubsub.Subscriber) {
 				//noop
 			}, func() {})
-
 	}
 
 	for i := 0; i < b.N; i++ {
-		ps.Publish(pubsub.Message{Topic: "hello", Body: "world"})
+		ps.Publish(&pubsub.Message{Topic: "hello", Body: "world"})
 	}
 
 	ps.Shutdown()
