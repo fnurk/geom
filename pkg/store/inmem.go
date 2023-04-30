@@ -23,7 +23,20 @@ func MemGet(bucket string, key string) interface{} {
 	m := GetMutex(bucket)
 	m.RLock()
 	defer m.RUnlock()
-	return cache[bucket][key]
+	b := cache[bucket]
+	if b == nil {
+		b = make(map[string]interface{})
+		cache[bucket] = b
+	}
+	return b[key]
+}
+
+func ClearMemBucket(bucket string) {
+	m := GetMutex(bucket)
+	m.Lock()
+	defer m.Unlock()
+	b := make(map[string]interface{})
+	cache[bucket] = b
 }
 
 func MemSet(bucket string, key string, val interface{}) {
@@ -35,12 +48,17 @@ func MemSet(bucket string, key string, val interface{}) {
 		b = make(map[string]interface{})
 		cache[bucket] = b
 	}
-	cache[bucket][key] = val
+	b[key] = val
 }
 
 func MemDel(bucket string, key string) {
 	m := GetMutex(bucket)
 	m.Lock()
 	defer m.Unlock()
-	delete(cache[bucket], key)
+	b := cache[bucket]
+	if b == nil {
+		b = make(map[string]interface{})
+		cache[bucket] = b
+	}
+	delete(b, key)
 }
