@@ -10,9 +10,10 @@ import (
 )
 
 type BoltDatabase struct {
-	DB        *bolt.DB
-	InitHooks []DbInitHook
-	PutHooks  []DbPutHook
+	DB           *bolt.DB
+	InitHooks    []DbInitHook
+	PutHooks     []DbPutHook
+	PeriodicDump bool
 }
 
 func NewBoltDb(filename string) (*BoltDatabase, error) {
@@ -23,9 +24,10 @@ func NewBoltDb(filename string) (*BoltDatabase, error) {
 	}
 
 	return &BoltDatabase{
-		DB:        boltdb,
-		InitHooks: []DbInitHook{},
-		PutHooks:  []DbPutHook{},
+		DB:           boltdb,
+		InitHooks:    []DbInitHook{},
+		PutHooks:     []DbPutHook{},
+		PeriodicDump: true,
 	}, nil
 
 }
@@ -66,17 +68,19 @@ func (db BoltDatabase) Init() error {
 	}
 
 	//DUMP DATABASE TO OTHER FILE FOR VIEWING
-	go func(db *bolt.DB) {
-		for {
-			c := time.Tick(2 * time.Second)
-			for range c {
-				db.View(func(tx *bolt.Tx) error {
-					tx.CopyFile("copy.db", 0666)
-					return nil
-				})
+	if db.PeriodicDump {
+		go func(db *bolt.DB) {
+			for {
+				c := time.Tick(2 * time.Second)
+				for range c {
+					db.View(func(tx *bolt.Tx) error {
+						tx.CopyFile("copy.db", 0666)
+						return nil
+					})
+				}
 			}
-		}
-	}(db.DB)
+		}(db.DB)
+	}
 
 	return nil
 }
@@ -110,8 +114,6 @@ func (db BoltDatabase) Get(t string, id string) ([]byte, error) {
 func (db BoltDatabase) Put(t string, id string, data []byte) (string, error) {
 	retId := id
 
-	// indexes := GetIndexes(t)
-
 	db.DB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(t))
 
@@ -130,30 +132,6 @@ func (db BoltDatabase) Put(t string, id string, data []byte) (string, error) {
 		if err != nil {
 			return err
 		}
-
-		// for _, ix := range indexes {
-		// 	ixb := tx.Bucket([]byte("index"))
-		//
-		// 	val := d.(map[string][]byte)[ix.FieldName]
-		//
-		// 	var ixkey string
-		// 	switch val.(type) {
-		// 	case string:
-		// 		ixkey = ix.IndexName + "." + val.(string)
-		// 	case float64:
-		// 		ixkey = ix.IndexName + "." + fmt.Sprintf("%f", val.(float64))
-		// 	case int:
-		// 		ixkey = ix.IndexName + "." + fmt.Sprintf("%d", val.(int))
-		// 	case uint64:
-		// 		ixkey = ix.IndexName + "." + fmt.Sprintf("%d", val.(uint64))
-		// 	}
-		//
-		// 	bixkey := []byte(ixkey)
-		// 	err := ixb.Put(bixkey, bid)
-		// 	if err != nil {
-		// 		return err
-		// 	}
-		// }
 
 		return nil
 	})

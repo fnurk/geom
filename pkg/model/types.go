@@ -2,7 +2,7 @@ package model
 
 import "encoding/json"
 
-var Types = map[string]DataType{}
+var Types = map[string]interface{}{}
 
 type DataType struct {
 	Template interface{}
@@ -15,11 +15,11 @@ type Index struct {
 }
 
 func RegisterType(name string, template interface{}) {
-	Types[name] = DataType{Template: template}
+	Types[name] = template
 }
 
 func Decode(t string, data []byte) (interface{}, error) {
-	decoded := Types[t].Template
+	decoded := Types[t]
 	err := json.Unmarshal(data, &decoded)
 
 	if err != nil {
