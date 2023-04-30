@@ -28,7 +28,7 @@ type Note struct {
 
 type Thing struct {
 	MetaFields
-	Id string `json:"id" index:"inmem,disk"` //to be indexed
+	Id string `json:"id" index:"inmem,persist"` //to be indexed
 }
 
 var changes pubsub.Pubsub
@@ -46,7 +46,7 @@ func main() {
 
 	db = boltdb
 
-	changes = pubsub.NewRingBufferPubsub(1000)
+	changes = pubsub.NewChanPubsub()
 
 	model.RegisterType("note", Note{})
 	model.RegisterType("thing", Thing{})
@@ -68,10 +68,12 @@ func main() {
 
 	e.Use(middleware.Recover())
 
-	//Set up CRUD+live updates for all types registered in model package
+	//Set up CRUD+live updates for all registered types
 	for k := range model.Types {
 		AddCrudEndpointsForType(e, k)
 	}
+
+	//Serve the dummy index.html
 	e.Static("/", ".")
 
 	e.Logger.Fatal(e.Start(":8080"))

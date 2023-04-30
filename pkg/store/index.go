@@ -8,8 +8,21 @@ import (
 	"github.com/fnurk/geom/pkg/model"
 )
 
-func CheckIndexes() {
+type IndexType string
 
+const (
+	INMEM   = "inmem"
+	PERSIST = "persist"
+)
+
+type Index struct {
+	indexType IndexType
+	field     reflect.StructField
+}
+
+var indexes = make(map[reflect.Type][]Index)
+
+func CheckIndexes() {
 	for _, t := range model.Types {
 		val := reflect.ValueOf(t)
 		for i := 0; i < val.Type().NumField(); i++ {
@@ -19,11 +32,24 @@ func CheckIndexes() {
 			if indexTag != "" {
 				parts := strings.Split(indexTag, ",")
 				for _, part := range parts {
-					fmt.Printf("%s -> %s", part, t.Name)
+					idx := Index{
+						field: t,
+					}
+
+					switch part {
+					case INMEM:
+						idx.indexType = INMEM
+						indexes[val.Type()] = append(indexes[val.Type()], idx)
+					case PERSIST:
+						idx.indexType = PERSIST
+						indexes[val.Type()] = append(indexes[val.Type()], idx)
+					}
+
 				}
 			}
 		}
 	}
+	fmt.Printf("INDEXES: %+v\n", indexes)
 }
 
 func AddIndex(typeName string, field string, indexName string) {
