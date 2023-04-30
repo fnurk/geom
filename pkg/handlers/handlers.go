@@ -42,7 +42,7 @@ func Get(store store.Database, t string, accessCheckers ...AccessFunc) func(echo
 		}
 
 		dataType := model.Types[t]
-		obj := dataType.Template
+		obj := dataType
 
 		err = json.Unmarshal([]byte(doc), &obj)
 
@@ -65,7 +65,7 @@ func Get(store store.Database, t string, accessCheckers ...AccessFunc) func(echo
 func Post(store store.Database, t string, accessCheckers ...AccessFunc) func(echo.Context) error {
 	return func(c echo.Context) error {
 		dataType := model.Types[t]
-		obj := dataType.Template
+		obj := dataType
 		if err := c.Bind(&obj); err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
@@ -86,7 +86,7 @@ func Post(store store.Database, t string, accessCheckers ...AccessFunc) func(ech
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
-		return c.String(http.StatusOK, fmt.Sprintf("%d", id))
+		return c.String(http.StatusOK, fmt.Sprintf("%s", id))
 	}
 }
 
@@ -106,7 +106,7 @@ func Put(store store.Database, t string, accessCheckers ...AccessFunc) func(echo
 		}
 
 		dataType := model.Types[t]
-		obj := dataType.Template
+		obj := dataType
 		if err := c.Bind(&obj); err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
