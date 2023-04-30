@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/fnurk/geom/pkg/model"
 	"github.com/fnurk/geom/pkg/pubsub"
@@ -13,9 +12,9 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-type DocAccessFunc func([]byte) bool
+type AccessFunc func([]byte) bool
 
-func checkAccess(doc []byte, checks ...DocAccessFunc) bool {
+func checkAccess(doc []byte, checks ...AccessFunc) bool {
 	allowed := false
 	for _, check := range checks {
 		if check(doc) {
@@ -26,7 +25,7 @@ func checkAccess(doc []byte, checks ...DocAccessFunc) bool {
 	return allowed
 }
 
-func Get(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
+func Get(store store.Database, t string, accessCheckers ...AccessFunc) func(echo.Context) error {
 	return func(c echo.Context) error {
 		id := c.Param("id")
 
@@ -63,7 +62,7 @@ func Get(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
 	}
 }
 
-func Post(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
+func Post(store store.Database, t string, accessCheckers ...AccessFunc) func(echo.Context) error {
 	return func(c echo.Context) error {
 		dataType := model.Types[t]
 		obj := dataType.Template
@@ -81,7 +80,7 @@ func Post(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
-		id, err := store.Put(t, 0, doc)
+		id, err := store.Put(t, "", doc)
 
 		if err != nil {
 			return c.String(http.StatusInternalServerError, err.Error())
@@ -91,7 +90,7 @@ func Post(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
 	}
 }
 
-func Put(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
+func Put(store store.Database, t string, accessCheckers ...AccessFunc) func(echo.Context) error {
 	return func(c echo.Context) error {
 		id := c.Param("id")
 
@@ -118,9 +117,7 @@ func Put(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
-		idInt, err := strconv.Atoi(id)
-
-		_, err = store.Put(t, uint64(idInt), bytes)
+		_, err = store.Put(t, id, bytes)
 
 		if err != nil {
 			return c.String(http.StatusInternalServerError, err.Error())
@@ -129,7 +126,7 @@ func Put(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
 	}
 }
 
-func Delete(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
+func Delete(store store.Database, t string, accessCheckers ...AccessFunc) func(echo.Context) error {
 	return func(c echo.Context) error {
 		id := c.Param("id")
 
@@ -156,7 +153,7 @@ func Delete(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error 
 	}
 }
 
-func LiveUpdates(t string, accessCheckers ...DocAccessFunc) func(echo.Context) error {
+func LiveUpdates(store store.Database, t string, changes *pubsub.Pubsub, accessCheckers ...AccessFunc) func(echo.Context) error {
 	return func(c echo.Context) error {
 		id := c.Param("id")
 
@@ -176,7 +173,7 @@ func LiveUpdates(t string, accessCheckers ...DocAccessFunc) func(echo.Context) e
 
 		websocket.Handler(func(ws *websocket.Conn) {
 			defer ws.Close()
-			store.Changes.Subscribe(fmt.Sprintf("%s.%s", t, id), func(m *pubsub.Message, s *pubsub.Subscriber) {
+			changes.Subscribe(fmt.Sprintf("%s.%s", t, id), func(m *pubsub.Message, s *pubsub.Subscriber) {
 				err := websocket.Message.Send(ws, m.Body)
 				if err != nil {
 					s.Unsubscribe()

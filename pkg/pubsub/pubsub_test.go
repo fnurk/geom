@@ -24,7 +24,7 @@ func TestPubSub_TestSimpleDelivery(t *testing.T) {
 	for i := 0; i < numSubs; i++ {
 		numMsgs := 0
 		ps.Subscribe("hello",
-			func(m *pubsub.Message) {
+			func(m *pubsub.Message, s *pubsub.Subscriber) {
 				numMsgs++
 				counter++
 				if numMsgs >= numPublishers {
@@ -59,7 +59,7 @@ func TestPubSub_Unsubscribe(t *testing.T) {
 
 	counter := 0
 
-	ps.Subscribe("hello", func(m *pubsub.Message) {
+	ps.Subscribe("hello", func(m *pubsub.Message, s *pubsub.Subscriber) {
 		counter++
 	}, func() {
 	})
@@ -102,13 +102,13 @@ func Benchmark_PubSub_NoSubs(b *testing.B) {
 	}
 }
 
-//Run 1000 publishers, one message each, to 1000 subscribers
+// Run 1000 publishers, one message each, to 1000 subscribers
 func Benchmark_PubSub(b *testing.B) {
 	ps := pubsub.New(100)
 
 	for i := 0; i < 1000; i++ {
 		ps.Subscribe("hello",
-			func(m *pubsub.Message) {
+			func(m *pubsub.Message, s *pubsub.Subscriber) {
 				//noop
 			}, func() {})
 
