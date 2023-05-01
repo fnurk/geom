@@ -54,8 +54,6 @@ func main() {
 	model.RegisterType("note", Note{})
 	model.RegisterType("thing", Thing{})
 
-	store.PopulateIndexes()
-
 	ds.AddPutHook(func(t string, id string, value []byte) {
 		changes.Publish(&pubsub.Message{
 			Topic: fmt.Sprintf("%s.%s", t, id),

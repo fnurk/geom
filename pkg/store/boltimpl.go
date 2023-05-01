@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/fnurk/geom/pkg/model"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -30,24 +29,6 @@ func NewBoltDb(filename string) (*BoltDatabase, error) {
 
 func (db BoltDatabase) Init() error {
 
-	db.DB.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte("index"))
-		if err != nil {
-			return err
-		}
-		return nil
-	})
-
-	db.DB.Update(func(tx *bolt.Tx) error {
-		for k := range model.Types {
-			_, err := tx.CreateBucketIfNotExists([]byte(k))
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-
 	//DUMP DATABASE TO OTHER FILE FOR VIEWING
 	if db.PeriodicDump {
 		go func(db *bolt.DB) {
@@ -64,6 +45,16 @@ func (db BoltDatabase) Init() error {
 	}
 
 	return nil
+}
+
+func (db BoltDatabase) CreateBucketIfNotExists(bucketName string) error {
+	return db.DB.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte(bucketName))
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (db BoltDatabase) Close() {
