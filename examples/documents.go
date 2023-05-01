@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fnurk/geom/pkg/auth"
 	"github.com/fnurk/geom/pkg/handlers"
 	"github.com/fnurk/geom/pkg/model"
 
@@ -28,50 +29,67 @@ type Note struct {
 
 type Thing struct {
 	MetaFields
-	Id string `json:"id" index:"inmem,persist"` //to be indexed
+	Id      string `json:"id" index:"inmem"`        //to be indexed
+	OtherId string `json:"otherId" index:"persist"` //to be indexed
 }
 
 var changes pubsub.Pubsub
 
-var db store.Database
+var ds *store.Datastore
 
 func main() {
 	e := echo.New()
 
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-		Format: "${time_rfc3339} - ${remote_ip}: ${method} ${uri} -> ${status}\n",
+		Format: "${time_rfc3339}: ${method} ${uri} -> ${status}\n",
 	}))
 
 	boltdb, err := store.NewBoltDb("test.db")
+	cache := store.NewInMemKV()
 
-	db = boltdb
+	ds = store.NewDatastore(boltdb, cache)
 
 	changes = pubsub.NewChanPubsub()
 
 	model.RegisterType("note", Note{})
 	model.RegisterType("thing", Thing{})
 
-	db.AddPutHook(func(t string, id string, value []byte) {
+	store.PopulateIndexes()
+
+	ds.AddPutHook(func(t string, id string, value []byte) {
 		changes.Publish(&pubsub.Message{
 			Topic: fmt.Sprintf("%s.%s", t, id),
 			Body:  string(value),
 		})
 	})
 
-	store.CheckIndexes()
-
-	err = db.Init()
+	err = ds.Init()
 	if err != nil {
 		e.Logger.Fatal(err)
 	}
-	defer db.Close()
+	defer ds.Close()
 
 	e.Use(middleware.Recover())
 
-	//Set up CRUD+live updates for all registered types
-	for k := range model.Types {
-		AddCrudEndpointsForType(e, k)
-	}
+	handlers.AddCrudEndpointsForType(e, ds, changes, "note", handlers.CRUDLAccessCheckers{
+		GetCheck:    auth.Any(isOwner, isSharedWith),
+		PostCheck:   open,
+		PutCheck:    auth.Any(isOwner, isSharedWith),
+		DeleteCheck: auth.Any(isOwner, isSharedWith),
+		LiveCheck:   auth.Any(isOwner, isSharedWith),
+	})
+
+	//use echo groups - maybe custom middleware for just these endpoints?
+	docGroup := e.Group("/documents")
+
+	//the access checkers could be reused here since they're the same
+	handlers.AddCrudEndpointsForTypeInGroup(docGroup, ds, changes, "thing", handlers.CRUDLAccessCheckers{
+		GetCheck:    auth.Any(isOwner, isSharedWith),
+		PostCheck:   open,
+		PutCheck:    auth.Any(isOwner, isSharedWith),
+		DeleteCheck: auth.Any(isOwner, isSharedWith),
+		LiveCheck:   auth.Any(isOwner, isSharedWith),
+	})
 
 	//Serve the dummy index.html
 	e.Static("/", ".")
@@ -79,28 +97,23 @@ func main() {
 	e.Logger.Fatal(e.Start(":8080"))
 }
 
-func AddCrudEndpointsForType(e *echo.Echo, t string) {
-	open := func(doc []byte) bool {
-		return true
-	}
+var open = auth.AccessFunc(func(c echo.Context, doc []byte) bool {
+	// Allow all reqs, assume middleware handles unauthenticated users.
+	return true
+})
 
-	isOwner := func(doc []byte) bool {
-		return gjson.GetBytes(doc, "createdBy").String() == "124"
-	}
+var isOwner = auth.AccessFunc(func(c echo.Context, doc []byte) bool {
+	// Get logged in user(in this case userId 124) from context, maybe middleware already populated it?
+	return gjson.GetBytes(doc, "createdBy").String() == "124"
+})
 
-	isSharedWith := func(doc []byte) bool {
-		shares := gjson.GetBytes(doc, "sharedWith").Array()
-		for _, v := range shares {
-			if v.String() == "124" {
-				return true
-			}
+var isSharedWith = auth.AccessFunc(func(c echo.Context, doc []byte) bool {
+	// Get logged in user(in this case userId 124) from context, maybe middleware already populated it?
+	shares := gjson.GetBytes(doc, "sharedWith").Array()
+	for _, v := range shares {
+		if v.String() == "124" {
+			return true
 		}
-		return false
 	}
-
-	e.GET("/"+t+"/:id", handlers.Get(db, t, isOwner, isSharedWith))
-	e.POST("/"+t, handlers.Post(db, t, open))
-	e.PUT("/"+t+"/:id", handlers.Put(db, t, isOwner, isSharedWith))
-	e.DELETE("/"+t+"/:id", handlers.Delete(db, t, isOwner, isSharedWith))
-	e.GET("/"+t+"/:id/live", handlers.LiveUpdates(db, t, changes, isOwner, isSharedWith))
-}
+	return false
+})

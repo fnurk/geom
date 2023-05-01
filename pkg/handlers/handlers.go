@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/fnurk/geom/pkg/auth"
 	"github.com/fnurk/geom/pkg/model"
 	"github.com/fnurk/geom/pkg/pubsub"
 	"github.com/fnurk/geom/pkg/store"
@@ -12,20 +13,31 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-type AccessFunc func([]byte) bool
-
-func checkAccess(doc []byte, checks ...AccessFunc) bool {
-	allowed := false
-	for _, check := range checks {
-		if check(doc) {
-			allowed = true
-			break
-		}
-	}
-	return allowed
+type CRUDLAccessCheckers struct {
+	GetCheck    auth.AccessFunc
+	PostCheck   auth.AccessFunc
+	PutCheck    auth.AccessFunc
+	DeleteCheck auth.AccessFunc
+	LiveCheck   auth.AccessFunc
 }
 
-func Get(store store.Database, t string, accessCheckers ...AccessFunc) func(echo.Context) error {
+func AddCrudEndpointsForType(e *echo.Echo, db store.Database, pb pubsub.Pubsub, t string, checkers CRUDLAccessCheckers) {
+	e.GET("/"+t+"/:id", Get(db, t, checkers.GetCheck))
+	e.POST("/"+t, Post(db, t, checkers.PostCheck))
+	e.PUT("/"+t+"/:id", Put(db, t, checkers.PutCheck))
+	e.DELETE("/"+t+"/:id", Delete(db, t, checkers.DeleteCheck))
+	e.GET("/"+t+"/:id/live", LiveUpdates(db, t, pb, checkers.LiveCheck))
+}
+
+func AddCrudEndpointsForTypeInGroup(e *echo.Group, db store.Database, pb pubsub.Pubsub, t string, checkers CRUDLAccessCheckers) {
+	e.GET("/"+t+"/:id", Get(db, t, checkers.GetCheck))
+	e.POST("/"+t, Post(db, t, checkers.PostCheck))
+	e.PUT("/"+t+"/:id", Put(db, t, checkers.PutCheck))
+	e.DELETE("/"+t+"/:id", Delete(db, t, checkers.DeleteCheck))
+	e.GET("/"+t+"/:id/live", LiveUpdates(db, t, pb, checkers.LiveCheck))
+}
+
+func Get(store store.Database, t string, accessChecker auth.AccessFunc) func(echo.Context) error {
 	return func(c echo.Context) error {
 		id := c.Param("id")
 
@@ -37,7 +49,7 @@ func Get(store store.Database, t string, accessCheckers ...AccessFunc) func(echo
 			return c.NoContent(http.StatusNotFound)
 		}
 
-		if !checkAccess(doc, accessCheckers...) {
+		if !accessChecker(c, doc) {
 			return c.NoContent(http.StatusForbidden)
 		}
 
@@ -62,7 +74,7 @@ func Get(store store.Database, t string, accessCheckers ...AccessFunc) func(echo
 	}
 }
 
-func Post(store store.Database, t string, accessCheckers ...AccessFunc) func(echo.Context) error {
+func Post(store store.Database, t string, accessChecker auth.AccessFunc) func(echo.Context) error {
 	return func(c echo.Context) error {
 		dataType := model.Types[t]
 		obj := dataType
@@ -72,7 +84,7 @@ func Post(store store.Database, t string, accessCheckers ...AccessFunc) func(ech
 
 		doc, err := json.Marshal(obj)
 
-		if !checkAccess(doc, accessCheckers...) {
+		if !accessChecker(c, doc) {
 			return c.NoContent(http.StatusForbidden)
 		}
 
@@ -90,7 +102,7 @@ func Post(store store.Database, t string, accessCheckers ...AccessFunc) func(ech
 	}
 }
 
-func Put(store store.Database, t string, accessCheckers ...AccessFunc) func(echo.Context) error {
+func Put(store store.Database, t string, accessChecker auth.AccessFunc) func(echo.Context) error {
 	return func(c echo.Context) error {
 		id := c.Param("id")
 
@@ -101,7 +113,7 @@ func Put(store store.Database, t string, accessCheckers ...AccessFunc) func(echo
 		if doc == nil {
 			return c.NoContent(http.StatusNotFound)
 		}
-		if !checkAccess(doc, accessCheckers...) {
+		if !accessChecker(c, doc) {
 			return c.NoContent(http.StatusForbidden)
 		}
 
@@ -126,7 +138,7 @@ func Put(store store.Database, t string, accessCheckers ...AccessFunc) func(echo
 	}
 }
 
-func Delete(store store.Database, t string, accessCheckers ...AccessFunc) func(echo.Context) error {
+func Delete(store store.Database, t string, accessChecker auth.AccessFunc) func(echo.Context) error {
 	return func(c echo.Context) error {
 		id := c.Param("id")
 
@@ -139,7 +151,7 @@ func Delete(store store.Database, t string, accessCheckers ...AccessFunc) func(e
 			return c.NoContent(http.StatusNotFound)
 		}
 
-		if !checkAccess(doc, accessCheckers...) {
+		if !accessChecker(c, doc) {
 			return c.NoContent(http.StatusForbidden)
 		}
 
@@ -153,7 +165,7 @@ func Delete(store store.Database, t string, accessCheckers ...AccessFunc) func(e
 	}
 }
 
-func LiveUpdates(store store.Database, t string, changes pubsub.Pubsub, accessCheckers ...AccessFunc) func(echo.Context) error {
+func LiveUpdates(store store.Database, t string, changes pubsub.Pubsub, accessChecker auth.AccessFunc) func(echo.Context) error {
 	return func(c echo.Context) error {
 		id := c.Param("id")
 
@@ -167,7 +179,7 @@ func LiveUpdates(store store.Database, t string, changes pubsub.Pubsub, accessCh
 			return c.NoContent(http.StatusNotFound)
 		}
 
-		if !checkAccess(doc, accessCheckers...) {
+		if !accessChecker(c, doc) {
 			return c.NoContent(http.StatusForbidden)
 		}
 

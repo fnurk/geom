@@ -2,7 +2,9 @@ package model
 
 import "encoding/json"
 
-var Types = map[string]interface{}{}
+type TypeMap map[string]interface{}
+
+var Types = TypeMap{}
 
 type DataType struct {
 	Template interface{}

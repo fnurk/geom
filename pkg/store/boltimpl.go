@@ -11,8 +11,6 @@ import (
 
 type BoltDatabase struct {
 	DB           *bolt.DB
-	InitHooks    []DbInitHook
-	PutHooks     []DbPutHook
 	PeriodicDump bool
 }
 
@@ -25,19 +23,9 @@ func NewBoltDb(filename string) (*BoltDatabase, error) {
 
 	return &BoltDatabase{
 		DB:           boltdb,
-		InitHooks:    []DbInitHook{},
-		PutHooks:     []DbPutHook{},
 		PeriodicDump: true,
 	}, nil
 
-}
-
-func (db BoltDatabase) AddInitHook(hook DbInitHook) {
-	db.InitHooks = append(db.InitHooks, hook)
-}
-
-func (db BoltDatabase) AddPutHook(hook DbPutHook) {
-	db.PutHooks = append(db.PutHooks, hook)
 }
 
 func (db BoltDatabase) Init() error {
@@ -59,13 +47,6 @@ func (db BoltDatabase) Init() error {
 		}
 		return nil
 	})
-
-	for _, ih := range db.InitHooks {
-		err := ih(db)
-		if err != nil {
-			return err
-		}
-	}
 
 	//DUMP DATABASE TO OTHER FILE FOR VIEWING
 	if db.PeriodicDump {
@@ -135,10 +116,6 @@ func (db BoltDatabase) Put(t string, id string, data []byte) (string, error) {
 
 		return nil
 	})
-
-	for _, ph := range db.PutHooks {
-		ph(t, retId, data)
-	}
 
 	return retId, nil
 }

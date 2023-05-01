@@ -5,6 +5,21 @@ import (
 	"sync"
 )
 
+/*
+
+This was an experiment in implementing a lossy pubsub without using chans/callbacks that might slow down the
+publishing goroutine.
+
+Paused for now - the cond.Wait() requires the lock to be acquired(not even RLock), which makes the messages
+queue up and be delivered to all subscribers sequentially(as in reader 1 gets all messages in a row, then on to reader 2).
+This seems to be an effect of how the cond package handles the waiters: they're put on a list and only dequeued when they release
+the lock, either by Unlock or cond.Wait - in this case that happens when all messages are read.
+
+Dream scenario here would be a cond.Broadcast() + cond.Wait() that does not require locking of the resource/that can work with a
+RLock, not a Lock.
+
+*/
+
 type RBSubscriber struct {
 	TopicPattern string
 	Active       bool

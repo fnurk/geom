@@ -2,63 +2,72 @@ package store
 
 import "sync"
 
+type InMemKV struct {
+	buckets map[string]map[string][]byte
+	mutexes map[string]*sync.RWMutex
+}
+
 type Bucket struct {
 	Name  string
 	Mutex sync.RWMutex
 }
 
-var cache = make(map[string]map[string]interface{})
-var mutexes = make(map[string]*sync.RWMutex)
+func NewInMemKV() *InMemKV {
+	return &InMemKV{
+		buckets: map[string]map[string][]byte{},
+		mutexes: map[string]*sync.RWMutex{},
+	}
+}
 
-func GetMutex(bucket string) *sync.RWMutex {
-	m := mutexes[bucket]
+func (kv *InMemKV) getMutex(bucket string) *sync.RWMutex {
+	m := kv.mutexes[bucket]
 	if m == nil {
-		mutexes[bucket] = new(sync.RWMutex)
-		m = mutexes[bucket]
+		kv.mutexes[bucket] = new(sync.RWMutex)
+		m = kv.mutexes[bucket]
 	}
 	return m
 }
 
-func MemGet(bucket string, key string) interface{} {
-	m := GetMutex(bucket)
+func (kv *InMemKV) Get(bucket string, key string) []byte {
+	m := kv.getMutex(bucket)
 	m.RLock()
 	defer m.RUnlock()
-	b := cache[bucket]
+	b := kv.buckets[bucket]
 	if b == nil {
-		b = make(map[string]interface{})
-		cache[bucket] = b
+		b = make(map[string][]byte)
+		kv.buckets[bucket] = b
 	}
 	return b[key]
 }
 
-func ClearMemBucket(bucket string) {
-	m := GetMutex(bucket)
+func (kv *InMemKV) ClearBucket(bucket string) {
+	m := kv.getMutex(bucket)
 	m.Lock()
 	defer m.Unlock()
-	b := make(map[string]interface{})
-	cache[bucket] = b
+	b := make(map[string][]byte)
+	kv.buckets[bucket] = b
 }
 
-func MemSet(bucket string, key string, val interface{}) {
-	m := GetMutex(bucket)
+func (kv *InMemKV) Set(bucket string, key string, val []byte) {
+	m := kv.getMutex(bucket)
 	m.Lock()
 	defer m.Unlock()
-	b := cache[bucket]
+	b := kv.buckets[bucket]
 	if b == nil {
-		b = make(map[string]interface{})
-		cache[bucket] = b
+		b = make(map[string][]byte)
+		kv.buckets[bucket] = b
 	}
 	b[key] = val
 }
 
-func MemDel(bucket string, key string) {
-	m := GetMutex(bucket)
+func (kv *InMemKV) Del(bucket string, key string) {
+	m := kv.getMutex(bucket)
 	m.Lock()
 	defer m.Unlock()
-	b := cache[bucket]
+	b := kv.buckets[bucket]
 	if b == nil {
-		b = make(map[string]interface{})
-		cache[bucket] = b
+		b = make(map[string][]byte)
+		kv.buckets[bucket] = b
 	}
 	delete(b, key)
 }
